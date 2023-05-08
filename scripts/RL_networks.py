@@ -98,7 +98,7 @@ class ActorNetwork(keras.Model):
 
 class Agent:
 	def __init__(self, alpha, beta, input_dims, tau, env,
-				 gamma=0.99, update_actor_interval=2, warmup=1000,
+				 gamma=0.99, update_actor_interval=2, warmup=0,
 				 n_actions=2, max_size=1000000, layer1_size=400,
 				 layer2_size=300, batch_size=100, noise=0.1):
 		self.gamma = gamma
@@ -112,6 +112,7 @@ class Agent:
 		self.warmup = warmup
 		self.n_actions = n_actions
 		self.update_actor_iter = update_actor_interval
+		self.ep_greedy = 0.0
 
 		self.actor = ActorNetwork(layer1_size, layer2_size, n_actions=n_actions, name='actor')
 		self.critic_1 = CriticNetwork(layer1_size, layer2_size, name='critic_1')
@@ -140,10 +141,18 @@ class Agent:
 			# returns a batch size of 1, want a scalar array
 			mu = self.actor(state)[0]
 
-		mu_ = mu + np.random.normal(scale=self.noise)
+		# if np.random.rand() > self.ep_greedy:
+		# 	# Pick random action
+		# 	mu_ = (tf.random.uniform(shape=[2]) - tf.constant([0.5, 0.5]))*2
+		# 	# tf.convert_to_tensor(np.array([(np.random.rand()-0.5)*2, (np.random.rand()-0.5)*2]))
 
+		# else:
+		mu_ = mu + np.random.normal(scale=self.noise)
 		mu_ = tf.clip_by_value(mu_, self.min_action, self.max_action)
+		
+
 		self.time_step += 1
+
 
 		return mu_
 
@@ -228,6 +237,7 @@ class Agent:
 
 		self.target_critic_1.set_weights(weights)
 
+		weights.clear()
 		weights = []
 		targets = self.target_critic_2.weights
 		for i, weight in enumerate(self.critic_2.weights):

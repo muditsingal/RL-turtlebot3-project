@@ -4,11 +4,10 @@ import numpy as np
 from gym.spaces import Discrete, Box
 import random
 import time
+import matplotlib.pyplot as plt
 
-dt = 0.1
 
 class tbot_2d_env(Env):
-	global dt
 	def get_obs_tuple(x, y, r):
 		return []
 	def __init__(self):
@@ -20,18 +19,18 @@ class tbot_2d_env(Env):
 									 high=np.array([1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5, 4.0, 4.0, np.pi, 4.0, 4.0, np.pi,  1, 1]))
 		# Initializing the robot's starting state, random lidar data, 12 lidar rays, x, y, theta pos of agent, x, y, theta pos of goal, linear and angular velocities of initial step
 		self.state = np.array([1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5, 0.3, 0.3, 0, 3.3, 3.3, 0, 0, 0])
-		self.ep_duration = 200
-		self.obstacles = [np.array([1.5, 1.5, 0.15]), np.array([2.5, 1.5, 0.15]), np.array([2.5, 2.5, 0.15]), np.array([1.5, 2.5, 0.15])]
+		self.ep_duration = 250
+		self.obstacles = [np.array([1.2, 1.2, 0.14]), np.array([2.8, 1.2, 0.14]), np.array([2.8, 2.8, 0.14]), np.array([1.2, 2.8, 0.14])]
 		self.img = np.ones((400,400,3), dtype=np.uint8)*255
 
 	def random_start(self):
-		self.state[12] = np.random.random()*0.3 + 0.3
-		self.state[13] = np.random.random()*0.3 + 0.3
+		self.state[12] = np.random.random()*0.2 + 0.3
+		self.state[13] = np.random.random()*0.2 + 0.3
 		self.state[14] = 0
 
 	def random_goal(self):
-		self.state[15] = np.random.random()*0.3 + 2.8
-		self.state[16] = np.random.random()*0.3 + 2.8
+		self.state[15] = np.random.random()*0.2 + 3.2
+		self.state[16] = np.random.random()*0.2 + 3.2
 		self.state[17] = 0
 
 	def fixed_start(self):
@@ -53,14 +52,15 @@ class tbot_2d_env(Env):
 		# self.state[15] = 0.8
 		# self.state[16] = 1.1
 		# self.state[17] = 0
-		self.ep_duration = 200
+		self.ep_duration = 250
 		return self.state
 
 	def step(self, action):
 		r_i = 0.1 	# Radius of robot
-		r_s = 0.4 	# Safety radius from obstacles
+		r_s = 0.45 	# Safety radius from obstacles
 		reward = 0.0
-		alpha = 0.5
+		alpha = 0.9
+		ray_safe_factor = 1.0
 		d_offset = 5
 		done = False
 		# blank info required by openAI gym
@@ -77,8 +77,8 @@ class tbot_2d_env(Env):
 		self.state[18] = v  	# Velocity in state
 		self.state[19] = w  	# Angular velocity in state
 
-		v = v*0.2
 		th = self.state[14]
+		v = v*0.4
 
 		for i in range(10):	
 			self.state[12] += v*dt*np.cos(th)/10
@@ -98,7 +98,8 @@ class tbot_2d_env(Env):
 			return self.state, reward, done, info
 
 		else:
-			reward += alpha*(d_offset - d_to_goal)
+			# reward += alpha*(d_offset - d_to_goal)
+			reward += alpha/(d_to_goal + 0.2)
 
 		# Checking if robot moves out of the arena (4mx4m) area, giving a large negative reward and marking done if robot goes out of arena
 		if self.state[12] < r_i or self.state[13] < r_i or self.state[12] > 4 - r_i or self.state[13] > 4 - r_i:
@@ -108,13 +109,13 @@ class tbot_2d_env(Env):
 
 		
 		for ray_scan in self.state[0:12]:
-			if ray_scan < 0.4:
+			if ray_scan < 0.18:
 				reward -= 150
 				done = True
 				break
 
 			elif ray_scan < (r_i + r_s) :
-				reward += (ray_scan - 1.5)/(r_i + r_s)
+				reward += ray_safe_factor*(ray_scan - 1.5)/(12*(r_i + r_s))
 
 
 		# if ep_duration <= 0, mark done
@@ -143,7 +144,7 @@ class tbot_2d_env(Env):
 				theta = 360 + theta
 
 			theta = theta%360
-			ray_id = int(theta//30)
+			ray_id = int(theta//15)
 			
 			for i in range(3):
 				b = 1
@@ -165,10 +166,8 @@ class tbot_2d_env(Env):
 		for obs in self.obstacles:
 			cv2.circle(self.img, (int(obs[0]*100), int(400-obs[1]*100)), int(obs[2]*100), (120, 120, 120), thickness=-1)
 
-		return self.img
-		# cv2.imshow("Enviroment window", self.img)
-
-
+		# return self.img
+		cv2.imshow("Enviroment window", self.img)
 
 if __name__=='__main__':
 
@@ -184,31 +183,41 @@ if __name__=='__main__':
 	print(env.action_space.low[1])
 
 
-	while ep_num < 502:
+	while ep_num < 5:
 		step_num = 0
 		env.reset()
 		done = False
-		while step_num < 202 and done == False:
+		action = np.array([0.0, 0.0])
+		reward_t = 0
+		while step_num < 301: # and done == False:
 			step_num += 1
 			# action = env.action_space.sample()
-			action = np.array([1.0, 1.0])
+			
 			state, reward, done, info = env.step(action)
-			if done == True and reward > 30:
-				print(state[:12], done, reward)
+			# if done == True and reward > 30:
+			# print("State: ", state, "Done:w ", done, "Reward: ", reward)
+			reward_t += reward
+			print("State: ", state[:12], "Reward: ", reward)
+			
+			# print(ep_num, step_num)w
 
-			if ep_num %100 == 0:
-				# action = env.action_space.sample()
-				action = np.array([1.0, 1.0])
-				# action = np.array([0.0, 0.0])
-				# print(action)
-				# action = np.array([0.1, 0.05])
-				# state, reward, done, info
-				state, reward, done, info = env.step(action)
-				if done == True and reward > 30:
-					print(state[:12], done, reward)
+			key = cv2.waitKey(40)
+			if key == ord("w"):
+				action = np.array([0.6, 0.0])
 
-				env.render()
-				cv2.waitKey(1)
+			elif key == ord("a"):
+				action = np.array([0.6, 0.8])
+
+			elif key == ord("d"):
+				action = np.array([0.6, -0.8])
+
+			elif key == ord("s"):
+				action = np.array([0.0, 0.0])
+
+
+
+			env.render()
+				
 
 		print(reward)
 
